@@ -83,6 +83,8 @@ Re-indexing a document replaces its chunks in one transaction, so `make ingest` 
 
 ## Quickstart
 
+These are the short versions. [Step-by-step setup](#step-by-step-setup) goes through every step and shows what you should see.
+
 ### With Docker
 
 ```bash
@@ -103,16 +105,18 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 You need Postgres 17 with pgvector (`brew install postgresql@17 pgvector` or `apt install postgresql-17 postgresql-17-pgvector`):
 
 ```bash
-createuser rag --pwprompt                  # password: rag
+createuser rag --pwprompt
 createdb rag --owner rag
-psql -d rag -c 'CREATE EXTENSION vector'   # as a superuser
+psql -d rag -c 'CREATE EXTENSION vector'
 
 python3 -m venv .venv && source .venv/bin/activate
 make install
 export DATABASE_URL=postgresql://rag:rag@localhost:5432/rag
 make ingest
-make serve                                 # http://localhost:8000/docs
+make serve
 ```
+
+The password is `rag` and `CREATE EXTENSION` has to run as a superuser. The API docs are then at http://localhost:8000/docs.
 
 Or from Python:
 
@@ -121,6 +125,191 @@ python examples/quickstart.py "Which plans include SAML single sign-on?"
 ```
 
 The first run downloads two models (about 150 MB) into `.cache/models`. After that it works offline. For LLM answers set `GENERATOR=anthropic` and `ANTHROPIC_API_KEY`.
+
+## Step-by-step setup
+
+You need git, and curl for the checks below. Start by getting the code:
+
+```bash
+git clone https://github.com/lord-hamza/pgcite.git
+cd pgcite
+```
+
+Then pick one of two ways to run it. Docker runs Postgres and the API in containers, so there's nothing else to install. A local install takes a few more steps and is the one to use for changing the code, running the tests or the eval. The commands are for bash or zsh. On Windows, run them in WSL.
+
+### Option A: Docker
+
+You need Docker with Compose v2 (`docker compose version` prints a version).
+
+1. Build the image and start Postgres and the API.
+
+   ```bash
+   docker compose up -d --build --wait
+   ```
+
+   The first build installs the dependencies and downloads both models into the image, which takes a few minutes. The command returns once both containers are healthy.
+
+2. Index the sample documents.
+
+   ```bash
+   docker compose exec api python scripts/ingest.py
+   ```
+
+   It prints `Indexed 25 documents into 87 chunks`.
+
+3. Ask a question.
+
+   ```bash
+   curl -s localhost:8000/ask -H 'content-type: application/json' \
+     -d '{"question": "What is the default value of sync.batch_size?"}'
+   ```
+
+   You get the answer and citations from the example under [API](#api), with your own chunk ids and timings. You can also try every route in the browser at http://localhost:8000/docs.
+
+4. Stop it when you're done.
+
+   ```bash
+   docker compose down
+   ```
+
+   The index stays in the `pgdata` volume and is still there after the next `docker compose up -d`. `docker compose down -v` deletes it.
+
+`make demo` runs steps 1 to 3 in one go, with a sample question of its own.
+
+### Option B: local install
+
+You need Python 3.11 to 3.14 (`python3 --version`) and PostgreSQL 17 with pgvector. Python 3.15 doesn't work yet because some of fastembed's dependencies have no wheels for it.
+
+1. Install and start Postgres with pgvector.
+
+   Have Docker? Run `make db` instead of the commands below. It starts only Postgres in a container, with the user, database and extension from step 2 already taken care of. Then go on with step 3.
+
+   macOS with Homebrew:
+
+   ```bash
+   brew install postgresql@17 pgvector
+   brew services start postgresql@17
+   export PATH="$(brew --prefix postgresql@17)/bin:$PATH"
+   ```
+
+   postgresql@17 is keg-only, so the `export` puts `psql` and the other tools on your path. It only lasts for this terminal. Add the line to `~/.zshrc` to keep it.
+
+   Ubuntu or Debian:
+
+   ```bash
+   sudo apt install -y postgresql-common
+   sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+   sudo apt install postgresql-17 postgresql-17-pgvector python3-venv make
+   ```
+
+   The second line adds the PostgreSQL apt repository, which has version 17 and pgvector for every supported release. apt starts Postgres for you.
+
+2. Create the database user, the database and the extension. Enter `rag` as the password, twice.
+
+   macOS:
+
+   ```bash
+   createuser rag --pwprompt
+   createdb rag --owner rag
+   psql -d rag -c 'CREATE EXTENSION vector'
+   ```
+
+   Linux, as the `postgres` user:
+
+   ```bash
+   sudo -u postgres createuser rag --pwprompt
+   sudo -u postgres createdb rag --owner rag
+   sudo -u postgres psql -d rag -c 'CREATE EXTENSION vector'
+   ```
+
+   Creating the extension needs a superuser. pgcite itself connects as `rag` and creates its tables and indexes on first start.
+
+3. Create a virtual environment and install pgcite with its development tools.
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   make install
+   ```
+
+   If `python3` is older than 3.11 or is 3.15, name a supported version instead, for example `python3.13 -m venv .venv`. On macOS, `brew install python@3.13` installs it.
+
+4. Download the models.
+
+   ```bash
+   python -m pgcite.models
+   ```
+
+   This saves about 150 MB to `.cache/models` and prints `BAAI/bge-small-en-v1.5 (384 dims) and Xenova/ms-marco-MiniLM-L-6-v2 ready`. From then on pgcite works offline.
+
+5. Index the sample documents.
+
+   ```bash
+   make ingest
+   ```
+
+   It prints `Indexed 25 documents into 87 chunks`. Running it again replaces those chunks instead of adding copies.
+
+6. Start the API.
+
+   ```bash
+   make serve
+   ```
+
+   It restarts by itself when you change the code. In a second terminal, in the same folder:
+
+   ```bash
+   curl -s localhost:8000/health
+   ```
+
+   You should get `{"status":"ok","chunks":87,"generator":"extractive"}`. Ask questions with the `curl` command from Option A, step 3, or at http://localhost:8000/docs.
+
+7. Run the tests and the quality gate. They don't need the server.
+
+   ```bash
+   make test
+   make eval
+   ```
+
+   With Postgres running all 43 tests pass. Without it the 8 API tests are skipped. `make eval` answers the 40 golden questions, which takes a few minutes on a CPU. It writes `evals/report.md` and ends with `Quality gate passed.`
+
+   Both expect the default settings. With `API_KEY` set in `.env` the API tests get 401 responses, and with `GENERATOR=anthropic` the eval calls the paid API and won't match the baseline. The baseline also assumes the database holds only `data/docs`.
+
+### After setup
+
+**Settings.** pgcite reads environment variables and a `.env` file in the folder you start it from. Exported variables win over `.env`. `cp .env.example .env` gives you a starting point. [Configuration](#configuration) lists the main settings and `pgcite/config.py` has the rest. After a change, stop `make serve` and start it again. With Docker, run `docker compose up -d`, since `docker compose restart` keeps the old values. Compose passes only `GENERATOR`, `ANTHROPIC_API_KEY` and `API_KEY` from `.env` to the container. Add other settings under `environment:` in `docker-compose.yml`.
+
+**Your own documents.** With `.venv` active, `python scripts/ingest.py path/to/folder` indexes every `.md` file in the folder, but not its subfolders. The file name without `.md` becomes the document id and the first `# ` heading becomes the title. With Docker, or from another program, send documents to the API instead:
+
+```bash
+curl -s localhost:8000/documents -H 'content-type: application/json' \
+  -d '{"documents": [{"id": "vpn-setup", "title": "VPN setup", "text": "Connect to the VPN before you open the admin console."}]}'
+curl -s -X DELETE localhost:8000/documents/vpn-setup
+```
+
+Document ids can use letters, digits, `_`, `.` and `-`. Indexing a document again under the same id replaces it.
+
+**Answers from Claude.** Put your API key in `.env` and restart as described under Settings:
+
+```ini
+GENERATOR=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`LLM_MODEL` picks the model, for example `claude-haiku-5-5` for the cheapest answers (see [Latency and cost](#latency-and-cost)).
+
+**Requiring a key.** Set `API_KEY` before anyone else can reach the API. Every POST and DELETE request then has to send it in an `X-API-Key` header. `/health` and `/stats` stay open. Docker Compose publishes the API on port 8000 and Postgres on port 5432, with the password `rag`, on all network interfaces. If other machines can reach yours, remove the `ports:` entry of the `db` service in `docker-compose.yml`. The API doesn't need it.
+
+### Troubleshooting
+
+| you see | what to do |
+|---|---|
+| `Connection refused` | Postgres isn't running or `DATABASE_URL` points somewhere else. Start it with `brew services start postgresql@17`, `sudo service postgresql start` or `make db`. |
+| `address already in use` or `port is already allocated` | Another program uses port 8000 or 5432. Stop it, start the API on another port with `UVICORN_PORT=8001 make serve`, or change the first number under `ports:` in `docker-compose.yml`. |
+| `permission denied to create extension "vector"` | Run `CREATE EXTENSION vector` from Option B, step 2 as a superuser. |
+| `extension "vector" is not available` | pgvector isn't installed for the Postgres version that's running. |
+| `createuser` or `psql` not found | On macOS, run the `export PATH=...` line from Option B, step 1. |
+| `requires a different Python`, `File "setup.py" or "setup.cfg" not found` or `Cannot install fastembed` | Your Python is older than 3.11 (the one that comes with macOS is 3.9) or is 3.15. Delete `.venv` and create it again with a supported version, as in Option B, step 3. |
 
 ## API
 
