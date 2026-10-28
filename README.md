@@ -2,7 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)](pyproject.toml) [![Postgres 17 + pgvector](https://img.shields.io/badge/postgres%2017-pgvector-336791)](docker-compose.yml) [![FastAPI](https://img.shields.io/badge/api-FastAPI-009688)](pyproject.toml)
 
-<img src="docs/banner.svg" width="100%" alt="Asking pgcite a question over HTTP and getting an answer with a [1] citation and per-stage timings">
+<img src="docs/ask.svg" width="100%" alt="Asking pgcite a question over HTTP and getting an answer with a [1] citation and per-stage timings">
 
 pgcite answers questions about your documents and shows exactly where each answer came from. It runs on plain PostgreSQL with pgvector, mixes keyword and semantic search, reranks what it finds and checks its own answer quality on every push.
 
