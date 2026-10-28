@@ -1,4 +1,25 @@
-# pgcite
+<p align="center">
+  <img src="docs/banner.svg" width="100%" alt="pgcite: cited answers over your docs from PostgreSQL + pgvector">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/PostgreSQL%2017-pgvector-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 17 with pgvector">
+  <img src="https://img.shields.io/badge/Anthropic-optional-191919?logo=anthropic&logoColor=white" alt="Anthropic optional">
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
+</p>
+
+<p align="center">
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#api">API</a> ·
+  <a href="#evaluation">Evaluation</a> ·
+  <a href="#latency-and-cost">Latency and cost</a> ·
+  <a href="#design-notes-and-limitations">Design notes</a>
+</p>
+
+<p align="center"><sub>recall@5 0.963 · MRR 0.872 · 40-question quality gate in CI · runs offline on CPU</sub></p>
 
 pgcite answers questions about your documents and shows exactly where each answer came from. It runs on plain PostgreSQL with pgvector, mixes keyword and semantic search, reranks what it finds and checks its own answer quality on every push.
 
